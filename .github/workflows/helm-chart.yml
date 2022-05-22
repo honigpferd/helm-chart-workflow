@@ -1,0 +1,55 @@
+name: Release Helm Charts
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_call:
+
+
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@v2.2.1
+
+      - name: Run chart-testing (lint)
+        run: ct lint --debug --all --target-branch ${{ github.ref_name }}
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.2.0
+
+      - name: Run chart-testing (install)
+        run: ct install --debug --all --target-branch ${{ github.ref_name }}
+
+
+  release:
+    needs: lint-test
+    runs-on: ubuntu-latest
+    if: ${{ success() &&  github.event_name == 'push' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "$( git log --format='%an' ${{ github.sha }}^! )"
+          git config user.email "$( git log --format='%ae' ${{ github.sha }}^! )"
+
+      - name: Run chart-releaser
+        uses: helm/chart-releaser-action@v1.4.0
+        env:
+          CR_SKIP_EXISTING: "false"
+          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
